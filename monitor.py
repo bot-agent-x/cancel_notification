@@ -6,6 +6,10 @@ from datetime import datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
 import json
+import urllib3
+
+# Disable SSL warnings for corporate network environments
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load environment variables
 load_dotenv()
@@ -31,20 +35,23 @@ def now_jst():
 
 
 def get_target_dates():
-    """Get list of dates from today to next Friday"""
+    """Get list of dates from today to next week's Friday"""
     today = now_jst()
     target_dates = []
     
-    # Calculate days until next Friday
+    # Calculate days until next week's Friday
+    # If today is Friday (4), next week's Friday is 7 days away
+    # If today is Thursday (3), next week's Friday is 8 days away
+    # etc.
     days_until_friday = (4 - today.weekday()) % 7
     if days_until_friday == 0:
-        # Today is Friday, include today
-        days_until_friday = 0
+        # Today is Friday, next week's Friday is 7 days away
+        days_until_friday = 7
     else:
-        # Next Friday
-        days_until_friday = days_until_friday
+        # Next week's Friday (add 7 days to this week's Friday)
+        days_until_friday = days_until_friday + 7
     
-    # Generate dates from today to next Friday
+    # Generate dates from today to next week's Friday
     for i in range(days_until_friday + 1):
         date = today + timedelta(days=i)
         target_dates.append(date.strftime('%Y-%m-%d'))
@@ -91,7 +98,8 @@ def send_discord_notification(message):
     
     try:
         data = {"content": message}
-        response = requests.post(DISCORD_WEBHOOK_URL, json=data)
+        # Disable SSL verification for corporate network environments
+        response = requests.post(DISCORD_WEBHOOK_URL, json=data, verify=False)
         
         if response.status_code in [200, 204]:
             print(f"Discord notification sent: {message[:50]}...")
@@ -229,9 +237,31 @@ def run_monitoring():
         
         # Login
         page.goto("https://za-gin.mplus-system.info/guest/login.php")
-        page.fill('input[name="guest_id"]', LOGIN_ID)
-        page.fill('input[name="password"]', PASSWORD)
-        page.click('input[name="auth"]')
+        page.wait_for_load_state("networkidle")
+        
+        # Try to find login fields with different selectors
+        try:
+            # Wait for input fields to be visible
+            page.wait_for_selector('input[name="guest_id"]', timeout=10000)
+            page.fill('input[name="guest_id"]', LOGIN_ID)
+            page.fill('input[name="password"]', PASSWORD)
+            page.click('input[name="auth"]')
+        except Exception as e:
+            print(f"Login attempt 1 failed: {e}")
+            try:
+                # Try alternative selectors
+                page.wait_for_selector('input[type="text"]', timeout=10000)
+                page.fill('input[type="text"]', LOGIN_ID)
+                page.fill('input[type="password"]', PASSWORD)
+                page.click('input[type="submit"]')
+            except Exception as e2:
+                print(f"Login attempt 2 failed: {e2}")
+                # Try ID-based selectors
+                page.wait_for_selector('#guest_id', timeout=10000)
+                page.fill('#guest_id', LOGIN_ID)
+                page.fill('#password', PASSWORD)
+                page.click('#login_btn')
+        
         page.wait_for_load_state("networkidle")
         print("Logged in successfully")
         
@@ -243,7 +273,7 @@ def run_monitoring():
         # Send startup notification
         target_dates = get_target_dates()
         send_discord_notification(
-            f"🔔 キャンセル監視開始\n"
+            f"[START] キャンセル監視開始\n"
             f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"監視期間: {target_dates[0]} ～ {target_dates[-1]}\n"
             f"対象セラピスト: {len(therapists)}名\n"
@@ -296,20 +326,37 @@ def run_monitoring():
             # Save updated state
             save_state(state)
             
-            # Send notifications for new slots
+            # Send notifications for new slots (batch notification)
             if new_slots:
-                print(f"\n🎉 Found {len(new_slots)} new available slots!")
+                # Filter out weekend slots (Saturday=5, Sunday=6)
+                weekday_slots = []
                 for slot in new_slots:
-                    message = (
-                        f"🎉 キャンセル空き発生！\n"
-                        f"セラピスト: {slot['therapist']}\n"
-                        f"日付: {slot['date']}\n"
-                        f"時間: {slot['time']}\n"
-                        f"コース: 90分\n"
-                        f"\n予約ページ: https://za-gin.mplus-system.info/guest/reservation.php"
-                    )
-                    send_discord_notification(message)
-                    time.sleep(1)  # Avoid rate limiting
+                    date_obj = datetime.strptime(slot['date'], '%Y-%m-%d')
+                    if date_obj.weekday() < 5:  # Monday-Friday only
+                        weekday_slots.append(slot)
+                
+                if weekday_slots:
+                    print(f"\n[NEW] Found {len(weekday_slots)} new available slots (weekdays only)!")
+                    
+                    # Group by therapist
+                    slots_by_therapist = {}
+                    for slot in weekday_slots:
+                        therapist = slot['therapist']
+                        if therapist not in slots_by_therapist:
+                            slots_by_therapist[therapist] = []
+                        slots_by_therapist[therapist].append(slot)
+                    
+                    # Send batch notification
+                    message_parts = ["[NEW] キャンセル空き発生！"]
+                    for therapist, slots in slots_by_therapist.items():
+                        message_parts.append(f"\nセラピスト: {therapist}")
+                        for slot in slots:
+                            message_parts.append(f"  {slot['date']} {slot['time']}")
+                    
+                    message_parts.append("\n予約ページ: https://za-gin.mplus-system.info/guest/reservation.php")
+                    send_discord_notification("\n".join(message_parts))
+                else:
+                    print("No new weekday slots found (all new slots are on weekends)")
             else:
                 print("No new slots found")
             
@@ -330,6 +377,16 @@ if __name__ == "__main__":
         run_monitoring()
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user")
+        send_discord_notification(
+            f"[STOP] キャンセル監視停止\n"
+            f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"理由: ユーザーによる手動停止"
+        )
     except Exception as e:
         print(f"Fatal error: {e}")
+        send_discord_notification(
+            f"[ERROR] キャンセル監視エラー停止\n"
+            f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"エラー: {str(e)}"
+        )
         raise

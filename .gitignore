@@ -42,3 +42,6 @@ Thumbs.db
 
 # Skip flag
 skip_next_run.txt
+
+# Debug files
+login_page_debug.html
