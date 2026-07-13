@@ -30,9 +30,10 @@ jobs:
     
     - name: Run monitor
       env:
+        LOGIN_URL: ${{ secrets.LOGIN_URL }}
         LOGIN_ID: ${{ secrets.LOGIN_ID }}
         PASSWORD: ${{ secrets.PASSWORD }}
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        THERAPISTS_JSON: ${{ secrets.THERAPISTS_JSON }}
+        TARGETS_JSON: ${{ secrets.TARGETS_JSON }}
       run: |
         python monitor.py

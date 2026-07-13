@@ -15,12 +15,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
 
 # Configuration
+LOGIN_URL = os.getenv("LOGIN_URL")
 LOGIN_ID = os.getenv("LOGIN_ID")
 PASSWORD = os.getenv("PASSWORD")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 CHECK_INTERVAL_MINUTES = 10
 COURSE_MINUTES = 90
-COURSE_VALUE = "53"  # 90-minute course value from the website
+COURSE_VALUE = "53"  # 90-minute course value
 
 # JST timezone (UTC+9)
 JST = timezone(timedelta(hours=9))
@@ -59,29 +60,29 @@ def get_target_dates():
     return target_dates
 
 
-def load_therapists(csv_file=None):
-    """Load therapist list from CSV file or environment variable"""
-    therapists_json = os.getenv("THERAPISTS_JSON")
+def load_targets(csv_file=None):
+    """Load target list from CSV file or environment variable"""
+    targets_json = os.getenv("TARGETS_JSON")
     
-    if therapists_json:
+    if targets_json:
         # Load from GitHub Actions secret
         try:
-            therapist_names = json.loads(therapists_json)
-            therapists = [{"therapist_id": i+1, "therapist_name": name} for i, name in enumerate(therapist_names)]
-            return therapists
+            target_names = json.loads(targets_json)
+            targets = [{"target_id": i+1, "target_name": name} for i, name in enumerate(target_names)]
+            return targets
         except Exception as e:
-            print(f"Error loading therapists from environment variable: {e}")
+            print(f"Error loading targets from environment variable: {e}")
     
     # Fallback to CSV file for local execution
     if csv_file and os.path.exists(csv_file):
-        therapists = []
+        targets = []
         with open(csv_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                therapists.append(row)
-        return therapists
+                targets.append(row)
+        return targets
     
-    raise ValueError("No therapist data available. Please set THERAPISTS_JSON environment variable or provide therapists.csv file.")
+    raise ValueError("No target data available. Please set TARGETS_JSON environment variable or provide targets.csv file.")
 
 
 def load_state():
@@ -127,9 +128,9 @@ def send_discord_notification(message):
         return False
 
 
-def check_therapist_availability(page, therapist_name, date):
+def check_target_availability(page, target_name, date):
     """
-    Check availability for a specific therapist on a specific date.
+    Check availability for a specific target on a specific date.
     Returns list of available start times, or empty list if not available.
     """
     try:
@@ -167,7 +168,7 @@ def check_therapist_availability(page, therapist_name, date):
                     break
         
         if not found_therapist:
-            print(f"  Therapist '{therapist_name}' not found for date {date}")
+            print(f"  Target '{target_name}' not found for date {date}")
             return []
         
         page.select_option('select[name="cast"]', therapist_value)
@@ -177,7 +178,7 @@ def check_therapist_availability(page, therapist_name, date):
         course_select = page.locator('select[name="course"]')
         
         if not course_select.is_visible():
-            print(f"  Course selection not available for {therapist_name} on {date} (fully booked)")
+            print(f"  Course selection not available for {target_name} on {date} (fully booked)")
             return []
         
         # Try to select 90-minute course
@@ -190,7 +191,7 @@ def check_therapist_availability(page, therapist_name, date):
                 break
         
         if not found_course:
-            print(f"  90-minute course not available for {therapist_name} on {date}")
+            print(f"  90-minute course not available for {target_name} on {date}")
             return []
         
         page.select_option('select[name="course"]', COURSE_VALUE)
@@ -200,7 +201,7 @@ def check_therapist_availability(page, therapist_name, date):
         start_time_select = page.locator('select[name="start_time"]')
         
         if not start_time_select.is_visible():
-            print(f"  Start time selection not available for {therapist_name} on {date}")
+            print(f"  Start time selection not available for {target_name} on {date}")
             return []
         
         start_time_options = start_time_select.locator('option').all()
@@ -213,14 +214,14 @@ def check_therapist_availability(page, therapist_name, date):
                 available_times.append(text)
         
         if available_times:
-            print(f"  Available for {therapist_name} on {date}: {available_times}")
+            print(f"  Available for {target_name} on {date}: {available_times}")
             return available_times
         else:
-            print(f"  No available times for {therapist_name} on {date}")
+            print(f"  No available times for {target_name} on {date}")
             return []
             
     except Exception as e:
-        print(f"  Error checking availability for {therapist_name} on {date}: {e}")
+        print(f"  Error checking availability for {target_name} on {date}: {e}")
         return []
 
 
@@ -239,9 +240,9 @@ def run_monitoring():
     print(f"Starting availability monitoring at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Check interval: {CHECK_INTERVAL_MINUTES} minutes")
     
-    # Load therapists
-    therapists = load_therapists('therapists.csv')
-    print(f"Monitoring {len(therapists)} therapists: {[t['therapist_name'] for t in therapists]}")
+    # Load targets
+    targets = load_targets('targets.csv')
+    print(f"Monitoring {len(targets)} targets: {[t['target_name'] for t in targets]}")
     
     # Load previous state
     state = load_state()
@@ -251,7 +252,7 @@ def run_monitoring():
         page = browser.new_page()
         
         # Login
-        page.goto("https://za-gin.mplus-system.info/guest/login.php")
+        page.goto(LOGIN_URL)
         page.wait_for_load_state("networkidle")
         
         # Try to find login fields with different selectors
@@ -288,10 +289,10 @@ def run_monitoring():
         # Send startup notification
         target_dates = get_target_dates()
         send_discord_notification(
-            f"[START] キャンセル監視開始\n"
+            f"[START] 監視開始\n"
             f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"監視期間: {target_dates[0]} ～ {target_dates[-1]}\n"
-            f"対象セラピスト: {len(therapists)}名\n"
+            f"対象: {len(targets)}件\n"
             f"チェック間隔: {CHECK_INTERVAL_MINUTES}分"
         )
         
@@ -303,25 +304,25 @@ def run_monitoring():
             target_dates = get_target_dates()
             print(f"Target dates: {target_dates[0]} to {target_dates[-1]}")
             
-            # Reload therapists CSV in case of changes
-            therapists = load_therapists('therapists.csv')
+            # Reload targets CSV in case of changes
+            targets = load_targets('targets.csv')
             
             new_slots = []
             
-            # Check each therapist and date
-            for therapist in therapists:
-                therapist_name = therapist['therapist_name']
-                print(f"\nChecking therapist: {therapist_name}")
+            # Check each target and date
+            for target in targets:
+                target_name = target['target_name']
+                print(f"\nChecking target: {target_name}")
                 
                 for date in target_dates:
                     # Reset form before each check
                     reset_form(page)
                     
                     # Check availability
-                    available_times = check_therapist_availability(page, therapist_name, date)
+                    available_times = check_target_availability(page, target_name, date)
                     
                     # Create state key
-                    state_key = f"{therapist_name}_{date}"
+                    state_key = f"{target_name}_{date}"
                     
                     # Compare with previous state
                     previous_times = state.get(state_key, [])
@@ -330,7 +331,7 @@ def run_monitoring():
                     for time_slot in available_times:
                         if time_slot not in previous_times:
                             new_slots.append({
-                                'therapist': therapist_name,
+                                'target': target_name,
                                 'date': date,
                                 'time': time_slot
                             })
@@ -353,22 +354,22 @@ def run_monitoring():
                 if weekday_slots:
                     print(f"\n[NEW] Found {len(weekday_slots)} new available slots (weekdays only)!")
                     
-                    # Group by therapist
-                    slots_by_therapist = {}
+                    # Group by target
+                    slots_by_target = {}
                     for slot in weekday_slots:
-                        therapist = slot['therapist']
-                        if therapist not in slots_by_therapist:
-                            slots_by_therapist[therapist] = []
-                        slots_by_therapist[therapist].append(slot)
+                        target = slot['target']
+                        if target not in slots_by_target:
+                            slots_by_target[target] = []
+                        slots_by_target[target].append(slot)
                     
                     # Send batch notification
-                    message_parts = ["[NEW] キャンセル空き発生！"]
-                    for therapist, slots in slots_by_therapist.items():
-                        message_parts.append(f"\nセラピスト: {therapist}")
+                    message_parts = ["[NEW] 空き発生！"]
+                    for target, slots in slots_by_target.items():
+                        message_parts.append(f"\n{target}")
                         for slot in slots:
                             message_parts.append(f"  {slot['date']} {slot['time']}")
                     
-                    message_parts.append("\n予約ページ: https://za-gin.mplus-system.info/guest/reservation.php")
+                    message_parts.append(f"\n予約ページ: {LOGIN_URL.replace('login.php', 'reservation.php')}")
                     send_discord_notification("\n".join(message_parts))
                 else:
                     print("No new weekday slots found (all new slots are on weekends)")
@@ -381,8 +382,8 @@ def run_monitoring():
 
 
 if __name__ == "__main__":
-    if not LOGIN_ID or not PASSWORD:
-        print("Error: LOGIN_ID and PASSWORD must be set in .env file")
+    if not LOGIN_URL or not LOGIN_ID or not PASSWORD:
+        print("Error: LOGIN_URL, LOGIN_ID and PASSWORD must be set in .env file")
         exit(1)
     
     if not DISCORD_WEBHOOK_URL:
@@ -393,14 +394,14 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user")
         send_discord_notification(
-            f"[STOP] キャンセル監視停止\n"
+            f"[STOP] 監視停止\n"
             f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"理由: ユーザーによる手動停止"
         )
     except Exception as e:
         print(f"Fatal error: {e}")
         send_discord_notification(
-            f"[ERROR] キャンセル監視エラー停止\n"
+            f"[ERROR] 監視エラー停止\n"
             f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"エラー: {str(e)}"
         )
