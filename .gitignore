@@ -45,3 +45,7 @@ skip_next_run.txt
 
 # Debug files
 login_page_debug.html
+
+# Local files (keep private)
+README.md
+therapists.csv

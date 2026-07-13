@@ -2,8 +2,8 @@ name: Therapist Availability Monitor
 
 on:
   schedule:
-    # Run every 30 minutes
-    - cron: '*/30 * * * *'
+    # Run every 10 minutes
+    - cron: '*/10 * * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
@@ -33,5 +33,6 @@ jobs:
         LOGIN_ID: ${{ secrets.LOGIN_ID }}
         PASSWORD: ${{ secrets.PASSWORD }}
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        THERAPISTS_JSON: ${{ secrets.THERAPISTS_JSON }}
       run: |
         python monitor.py

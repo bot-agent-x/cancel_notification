@@ -18,7 +18,7 @@ load_dotenv()
 LOGIN_ID = os.getenv("LOGIN_ID")
 PASSWORD = os.getenv("PASSWORD")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-CHECK_INTERVAL_MINUTES = 30
+CHECK_INTERVAL_MINUTES = 10
 COURSE_MINUTES = 90
 COURSE_VALUE = "53"  # 90-minute course value from the website
 
@@ -59,14 +59,29 @@ def get_target_dates():
     return target_dates
 
 
-def load_therapists(csv_file):
-    """Load therapist list from CSV file"""
-    therapists = []
-    with open(csv_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            therapists.append(row)
-    return therapists
+def load_therapists(csv_file=None):
+    """Load therapist list from CSV file or environment variable"""
+    therapists_json = os.getenv("THERAPISTS_JSON")
+    
+    if therapists_json:
+        # Load from GitHub Actions secret
+        try:
+            therapist_names = json.loads(therapists_json)
+            therapists = [{"therapist_id": i+1, "therapist_name": name} for i, name in enumerate(therapist_names)]
+            return therapists
+        except Exception as e:
+            print(f"Error loading therapists from environment variable: {e}")
+    
+    # Fallback to CSV file for local execution
+    if csv_file and os.path.exists(csv_file):
+        therapists = []
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                therapists.append(row)
+        return therapists
+    
+    raise ValueError("No therapist data available. Please set THERAPISTS_JSON environment variable or provide therapists.csv file.")
 
 
 def load_state():
