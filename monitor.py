@@ -168,7 +168,7 @@ def check_target_availability(page, target_name, date):
                     break
         
         if not found_therapist:
-            print(f"  Target '{target_name}' not found for date {date}")
+            print(f"  Target not found for date {date}")
             return []
         
         page.select_option('select[name="cast"]', therapist_value)
@@ -178,7 +178,7 @@ def check_target_availability(page, target_name, date):
         course_select = page.locator('select[name="course"]')
         
         if not course_select.is_visible():
-            print(f"  Course selection not available for {target_name} on {date} (fully booked)")
+            print(f"  Course selection not available for date {date} (fully booked)")
             return []
         
         # Try to select 90-minute course
@@ -191,7 +191,7 @@ def check_target_availability(page, target_name, date):
                 break
         
         if not found_course:
-            print(f"  90-minute course not available for {target_name} on {date}")
+            print(f"  90-minute course not available for date {date}")
             return []
         
         page.select_option('select[name="course"]', COURSE_VALUE)
@@ -201,7 +201,7 @@ def check_target_availability(page, target_name, date):
         start_time_select = page.locator('select[name="start_time"]')
         
         if not start_time_select.is_visible():
-            print(f"  Start time selection not available for {target_name} on {date}")
+            print(f"  Start time selection not available for date {date}")
             return []
         
         start_time_options = start_time_select.locator('option').all()
@@ -214,14 +214,14 @@ def check_target_availability(page, target_name, date):
                 available_times.append(text)
         
         if available_times:
-            print(f"  Available for {target_name} on {date}: {available_times}")
+            print(f"  Available for date {date}: {available_times}")
             return available_times
         else:
-            print(f"  No available times for {target_name} on {date}")
+            print(f"  No available times for date {date}")
             return []
             
     except Exception as e:
-        print(f"  Error checking availability for {target_name} on {date}: {e}")
+        print(f"  Error checking availability for date {date}: {e}")
         return []
 
 
@@ -242,7 +242,7 @@ def run_monitoring():
     
     # Load targets
     targets = load_targets('targets.csv')
-    print(f"Monitoring {len(targets)} targets: {[t['target_name'] for t in targets]}")
+    print(f"Monitoring {len(targets)} targets")
     
     # Load previous state
     state = load_state()
@@ -312,7 +312,7 @@ def run_monitoring():
             # Check each target and date
             for target in targets:
                 target_name = target['target_name']
-                print(f"\nChecking target: {target_name}")
+                print(f"\nChecking target: {target['target_id']}")
                 
                 for date in target_dates:
                     # Reset form before each check
