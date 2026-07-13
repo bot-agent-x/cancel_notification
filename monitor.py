@@ -162,7 +162,7 @@ def check_target_availability(page, target_name, date):
             text = option.inner_text()
             value = option.get_attribute('value')
             if value and value != '0':
-                if therapist_name in text:
+                if target_name in text:
                     found_therapist = True
                     therapist_value = value
                     break
