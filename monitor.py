@@ -18,7 +18,7 @@ load_dotenv()
 LOGIN_ID = os.getenv("LOGIN_ID")
 PASSWORD = os.getenv("PASSWORD")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-CHECK_INTERVAL_MINUTES = 10
+CHECK_INTERVAL_MINUTES = 30
 COURSE_MINUTES = 90
 COURSE_VALUE = "53"  # 90-minute course value from the website
 
