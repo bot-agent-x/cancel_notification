@@ -296,89 +296,87 @@ def run_monitoring():
             f"チェック間隔: {CHECK_INTERVAL_MINUTES}分"
         )
         
-        while True:
-            print(f"\n{'='*60}")
-            print(f"Check at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
+        # Single check for GitHub Actions
+        print(f"\n{'='*60}")
+        print(f"Check at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Get target dates
+        target_dates = get_target_dates()
+        print(f"Target dates: {target_dates[0]} to {target_dates[-1]}")
+        
+        # Reload targets CSV in case of changes
+        targets = load_targets('targets.csv')
+        
+        new_slots = []
+        
+        # Check each target and date
+        for target in targets:
+            target_name = target['target_name']
+            print(f"\nChecking target: {target['target_id']}")
             
-            # Get target dates
-            target_dates = get_target_dates()
-            print(f"Target dates: {target_dates[0]} to {target_dates[-1]}")
-            
-            # Reload targets CSV in case of changes
-            targets = load_targets('targets.csv')
-            
-            new_slots = []
-            
-            # Check each target and date
-            for target in targets:
-                target_name = target['target_name']
-                print(f"\nChecking target: {target['target_id']}")
+            for date in target_dates:
+                # Reset form before each check
+                reset_form(page)
                 
-                for date in target_dates:
-                    # Reset form before each check
-                    reset_form(page)
-                    
-                    # Check availability
-                    available_times = check_target_availability(page, target_name, date)
-                    
-                    # Create state key
-                    state_key = f"{target_name}_{date}"
-                    
-                    # Compare with previous state
-                    previous_times = state.get(state_key, [])
-                    
-                    # Detect new slots (available now but not before)
-                    for time_slot in available_times:
-                        if time_slot not in previous_times:
-                            new_slots.append({
-                                'target': target_name,
-                                'date': date,
-                                'time': time_slot
-                            })
-                    
-                    # Update state
-                    state[state_key] = available_times
-            
-            # Save updated state
-            save_state(state)
-            
-            # Send notifications for new slots (batch notification)
-            if new_slots:
-                # Filter out weekend slots (Saturday=5, Sunday=6)
-                weekday_slots = []
-                for slot in new_slots:
-                    date_obj = datetime.strptime(slot['date'], '%Y-%m-%d')
-                    if date_obj.weekday() < 5:  # Monday-Friday only
-                        weekday_slots.append(slot)
+                # Check availability
+                available_times = check_target_availability(page, target_name, date)
                 
-                if weekday_slots:
-                    print(f"\n[NEW] Found {len(weekday_slots)} new available slots (weekdays only)!")
-                    
-                    # Group by target
-                    slots_by_target = {}
-                    for slot in weekday_slots:
-                        target = slot['target']
-                        if target not in slots_by_target:
-                            slots_by_target[target] = []
-                        slots_by_target[target].append(slot)
-                    
-                    # Send batch notification
-                    message_parts = ["[NEW] 空き発生！"]
-                    for target, slots in slots_by_target.items():
-                        message_parts.append(f"\n{target}")
-                        for slot in slots:
-                            message_parts.append(f"  {slot['date']} {slot['time']}")
-                    
-                    message_parts.append(f"\n予約ページ: {LOGIN_URL.replace('login.php', 'reservation.php')}")
-                    send_discord_notification("\n".join(message_parts))
-                else:
-                    print("No new weekday slots found (all new slots are on weekends)")
+                # Create state key
+                state_key = f"{target_name}_{date}"
+                
+                # Compare with previous state
+                previous_times = state.get(state_key, [])
+                
+                # Detect new slots (available now but not before)
+                for time_slot in available_times:
+                    if time_slot not in previous_times:
+                        new_slots.append({
+                            'target': target_name,
+                            'date': date,
+                            'time': time_slot
+                        })
+                
+                # Update state
+                state[state_key] = available_times
+        
+        # Save updated state
+        save_state(state)
+        
+        # Send notifications for new slots (batch notification)
+        if new_slots:
+            # Filter out weekend slots (Saturday=5, Sunday=6)
+            weekday_slots = []
+            for slot in new_slots:
+                date_obj = datetime.strptime(slot['date'], '%Y-%m-%d')
+                if date_obj.weekday() < 5:  # Monday-Friday only
+                    weekday_slots.append(slot)
+            
+            if weekday_slots:
+                print(f"\n[NEW] Found {len(weekday_slots)} new available slots (weekdays only)!")
+                
+                # Group by target
+                slots_by_target = {}
+                for slot in weekday_slots:
+                    target = slot['target']
+                    if target not in slots_by_target:
+                        slots_by_target[target] = []
+                    slots_by_target[target].append(slot)
+                
+                # Send batch notification
+                message_parts = ["[NEW] 空き発生！"]
+                for target, slots in slots_by_target.items():
+                    message_parts.append(f"\n{target}")
+                    for slot in slots:
+                        message_parts.append(f"  {slot['date']} {slot['time']}")
+                
+                message_parts.append(f"\n予約ページ: {LOGIN_URL.replace('login.php', 'reservation.php')}")
+                send_discord_notification("\n".join(message_parts))
             else:
-                print("No new slots found")
-            
-            # Wait for next check
-            print(f"\nWaiting {CHECK_INTERVAL_MINUTES} minutes until next check...")
-            time.sleep(CHECK_INTERVAL_MINUTES * 60)
+                print("No new weekday slots found (all new slots are on weekends)")
+        else:
+            print("No new slots found")
+        
+        print("\nCheck completed. Exiting.")
 
 
 if __name__ == "__main__":
