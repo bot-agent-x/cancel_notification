@@ -354,33 +354,14 @@ if __name__ == "__main__":
             
             # Login
             page.goto(LOGIN_URL)
-            page.wait_for_load_state("networkidle")
+            print(f"Page title: {page.title()}")
             
-            # Try to find login fields with different selectors
-            try:
-                # Wait for input fields to be visible
-                page.wait_for_selector('input[name="guest_id"]', timeout=10000)
-                page.fill('input[name="guest_id"]', LOGIN_ID)
-                page.fill('input[name="password"]', PASSWORD)
-                page.click('input[name="auth"]')
-            except Exception as e:
-                print(f"Login attempt 1 failed: {e}")
-                try:
-                    # Try alternative selectors
-                    page.wait_for_selector('input[type="text"]', timeout=10000)
-                    page.fill('input[type="text"]', LOGIN_ID)
-                    page.fill('input[type="password"]', PASSWORD)
-                    page.click('input[type="submit"]')
-                except Exception as e2:
-                    print(f"Login attempt 2 failed: {e2}")
-                    # Try ID-based selectors
-                    page.wait_for_selector('#guest_id', timeout=10000)
-                    page.fill('#guest_id', LOGIN_ID)
-                    page.fill('#password', PASSWORD)
-                    page.click('#login_btn')
-            
+            # Simple login (same as test_playwright.py)
+            page.fill('input[name="guest_id"]', LOGIN_ID)
+            page.fill('input[name="password"]', PASSWORD)
+            page.click('input[name="auth"]')
             page.wait_for_load_state("networkidle")
-            print("Logged in successfully")
+            print(f"Logged in successfully, page title: {page.title()}")
             
             # Navigate to reservation form
             page.click('a[href="reservation.php"]')
