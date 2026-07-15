@@ -33,4 +33,7 @@ jobs:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         TARGETS_JSON: ${{ secrets.TARGETS_JSON }}
       run: |
+        echo "Starting Python script..."
+        python --version
         python monitor.py
+        echo "Python script completed"

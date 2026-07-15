@@ -320,6 +320,11 @@ def run_monitoring(page, state):
 
 
 if __name__ == "__main__":
+    print("Script execution started")
+    print(f"LOGIN_URL set: {bool(LOGIN_URL)}")
+    print(f"LOGIN_ID set: {bool(LOGIN_ID)}")
+    print(f"PASSWORD set: {bool(PASSWORD)}")
+    
     if not LOGIN_URL or not LOGIN_ID or not PASSWORD:
         print("Error: LOGIN_URL, LOGIN_ID and PASSWORD must be set in .env file")
         exit(1)
