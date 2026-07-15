@@ -1,4 +1,3 @@
-print("Importing modules...")
 from playwright.sync_api import sync_playwright
 import time
 import csv
@@ -9,15 +8,11 @@ from dotenv import load_dotenv
 import json
 import urllib3
 
-print("Modules imported successfully")
-
 # Disable SSL warnings for corporate network environments
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load environment variables
-print("Loading .env file...")
 load_dotenv()
-print(".env file loaded")
 
 # Configuration
 LOGIN_URL = os.getenv("LOGIN_URL")
@@ -325,11 +320,6 @@ def run_monitoring(page, state):
 
 
 if __name__ == "__main__":
-    print("Script execution started")
-    print(f"LOGIN_URL set: {bool(LOGIN_URL)}")
-    print(f"LOGIN_ID set: {bool(LOGIN_ID)}")
-    print(f"PASSWORD set: {bool(PASSWORD)}")
-    
     if not LOGIN_URL or not LOGIN_ID or not PASSWORD:
         print("Error: LOGIN_URL, LOGIN_ID and PASSWORD must be set in .env file")
         exit(1)
