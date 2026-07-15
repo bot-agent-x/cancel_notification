@@ -35,5 +35,5 @@ jobs:
       run: |
         echo "Starting Python script..."
         python --version
-        python monitor.py
+        python -u monitor.py
         echo "Python script completed"
