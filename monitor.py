@@ -1,3 +1,4 @@
+print("Importing modules...")
 from playwright.sync_api import sync_playwright
 import time
 import csv
@@ -8,11 +9,15 @@ from dotenv import load_dotenv
 import json
 import urllib3
 
+print("Modules imported successfully")
+
 # Disable SSL warnings for corporate network environments
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load environment variables
+print("Loading .env file...")
 load_dotenv()
+print(".env file loaded")
 
 # Configuration
 LOGIN_URL = os.getenv("LOGIN_URL")
