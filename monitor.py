@@ -235,148 +235,88 @@ def reset_form(page):
         print(f"Error resetting form: {e}")
 
 
-def run_monitoring(send_start_notification=False):
+def run_monitoring(page, state):
     """Run one availability check."""
-    print(f"Starting availability monitoring at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Check interval: {CHECK_INTERVAL_MINUTES} minutes")
+    print(f"\n{'='*60}")
+    print(f"Check at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Load targets
+    # Get target dates
+    target_dates = get_target_dates()
+    print(f"Target dates: {target_dates[0]} to {target_dates[-1]}")
+    
+    # Reload targets in case of changes
     targets = load_targets('targets.csv')
-    print(f"Monitoring {len(targets)} targets")
     
-    # Load previous state
-    state = load_state()
+    new_slots = []
     
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+    # Check each target and date
+    for target in targets:
+        target_name = target['target_name']
+        print(f"\nChecking target: {target['target_id']}")
         
-        # Login
-        page.goto(LOGIN_URL)
-        page.wait_for_load_state("networkidle")
-        
-        # Try to find login fields with different selectors
-        try:
-            # Wait for input fields to be visible
-            page.wait_for_selector('input[name="guest_id"]', timeout=10000)
-            page.fill('input[name="guest_id"]', LOGIN_ID)
-            page.fill('input[name="password"]', PASSWORD)
-            page.click('input[name="auth"]')
-        except Exception as e:
-            print(f"Login attempt 1 failed: {e}")
-            try:
-                # Try alternative selectors
-                page.wait_for_selector('input[type="text"]', timeout=10000)
-                page.fill('input[type="text"]', LOGIN_ID)
-                page.fill('input[type="password"]', PASSWORD)
-                page.click('input[type="submit"]')
-            except Exception as e2:
-                print(f"Login attempt 2 failed: {e2}")
-                # Try ID-based selectors
-                page.wait_for_selector('#guest_id', timeout=10000)
-                page.fill('#guest_id', LOGIN_ID)
-                page.fill('#password', PASSWORD)
-                page.click('#login_btn')
-        
-        page.wait_for_load_state("networkidle")
-        print("Logged in successfully")
-        
-        # Navigate to reservation form
-        page.click('a[href="reservation.php"]')
-        page.wait_for_load_state("networkidle")
-        print("Navigated to reservation form")
-        
-        if send_start_notification:
-            target_dates = get_target_dates()
-            send_discord_notification(
-                f"[START] 監視開始\n"
-                f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                f"監視期間: {target_dates[0]} ～ {target_dates[-1]}\n"
-                f"対象: {len(targets)}件\n"
-                f"チェック間隔: {CHECK_INTERVAL_MINUTES}分"
-            )
-
-        # Perform one check. The caller repeats this until it is stopped.
-        print(f"\n{'='*60}")
-        print(f"Check at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        # Get target dates
-        target_dates = get_target_dates()
-        print(f"Target dates: {target_dates[0]} to {target_dates[-1]}")
-        
-        # Reload targets CSV in case of changes
-        targets = load_targets('targets.csv')
-        
-        new_slots = []
-        
-        # Check each target and date
-        for target in targets:
-            target_name = target['target_name']
-            print(f"\nChecking target: {target['target_id']}")
+        for date in target_dates:
+            # Reset form before each check
+            reset_form(page)
             
-            for date in target_dates:
-                # Reset form before each check
-                reset_form(page)
-                
-                # Check availability
-                available_times = check_target_availability(page, target_name, date)
-                
-                # Create state key
-                state_key = f"{target_name}_{date}"
-                
-                # Compare with previous state
-                previous_times = state.get(state_key, [])
-                
-                # Detect new slots (available now but not before)
-                for time_slot in available_times:
-                    if time_slot not in previous_times:
-                        new_slots.append({
-                            'target': target_name,
-                            'date': date,
-                            'time': time_slot
-                        })
-                
-                # Update state
-                state[state_key] = available_times
-        
-        # Save updated state
-        save_state(state)
-        
-        # Send notifications for new slots (batch notification)
-        if new_slots:
-            # Filter out weekend slots (Saturday=5, Sunday=6)
-            weekday_slots = []
-            for slot in new_slots:
-                date_obj = datetime.strptime(slot['date'], '%Y-%m-%d')
-                if date_obj.weekday() < 5:  # Monday-Friday only
-                    weekday_slots.append(slot)
+            # Check availability
+            available_times = check_target_availability(page, target_name, date)
             
-            if weekday_slots:
-                print(f"\n[NEW] Found {len(weekday_slots)} new available slots (weekdays only)!")
-                
-                # Group by target
-                slots_by_target = {}
-                for slot in weekday_slots:
-                    target = slot['target']
-                    if target not in slots_by_target:
-                        slots_by_target[target] = []
-                    slots_by_target[target].append(slot)
-                
-                # Send batch notification
-                message_parts = ["[NEW] 空き発生！"]
-                for target, slots in slots_by_target.items():
-                    message_parts.append(f"\n{target}")
-                    for slot in slots:
-                        message_parts.append(f"  {slot['date']} {slot['time']}")
-                
-                message_parts.append(f"\n予約ページ: {LOGIN_URL.replace('login.php', 'reservation.php')}")
-                send_discord_notification("\n".join(message_parts))
-            else:
-                print("No new weekday slots found (all new slots are on weekends)")
+            # Create state key
+            state_key = f"{target_name}_{date}"
+            
+            # Compare with previous state
+            previous_times = state.get(state_key, [])
+            
+            # Detect new slots (available now but not before)
+            for time_slot in available_times:
+                if time_slot not in previous_times:
+                    new_slots.append({
+                        'target': target_name,
+                        'date': date,
+                        'time': time_slot
+                    })
+            
+            # Update state
+            state[state_key] = available_times
+    
+    # Save updated state
+    save_state(state)
+    
+    # Send notifications for new slots (batch notification)
+    if new_slots:
+        # Filter out weekend slots (Saturday=5, Sunday=6)
+        weekday_slots = []
+        for slot in new_slots:
+            date_obj = datetime.strptime(slot['date'], '%Y-%m-%d')
+            if date_obj.weekday() < 5:  # Monday-Friday only
+                weekday_slots.append(slot)
+        
+        if weekday_slots:
+            print(f"\n[NEW] Found {len(weekday_slots)} new available slots (weekdays only)!")
+            
+            # Group by target
+            slots_by_target = {}
+            for slot in weekday_slots:
+                target = slot['target']
+                if target not in slots_by_target:
+                    slots_by_target[target] = []
+                slots_by_target[target].append(slot)
+            
+            # Send batch notification
+            message_parts = ["[NEW] 空き発生！"]
+            for target, slots in slots_by_target.items():
+                message_parts.append(f"\n{target}")
+                for slot in slots:
+                    message_parts.append(f"  {slot['date']} {slot['time']}")
+            
+            message_parts.append(f"\n予約ページ: {LOGIN_URL.replace('login.php', 'reservation.php')}")
+            send_discord_notification("\n".join(message_parts))
         else:
-            print("No new slots found")
-        
-        print("\nCheck completed.")
+            print("No new weekday slots found (all new slots are on weekends)")
+    else:
+        print("No new slots found")
+    
+    print("\nCheck completed.")
 
 
 if __name__ == "__main__":
@@ -388,7 +328,95 @@ if __name__ == "__main__":
         print("Warning: DISCORD_WEBHOOK_URL not set. Notifications will not be sent.")
     
     try:
-        run_monitoring(send_start_notification=True)
+        print(f"Starting availability monitoring at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Check interval: {CHECK_INTERVAL_MINUTES} minutes")
+        
+        # Load targets
+        targets = load_targets('targets.csv')
+        print(f"Monitoring {len(targets)} targets")
+        
+        # Load previous state
+        state = load_state()
+        
+        # Send start notification
+        target_dates = get_target_dates()
+        send_discord_notification(
+            f"[START] 監視開始\n"
+            f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"監視期間: {target_dates[0]} ～ {target_dates[-1]}\n"
+            f"対象: {len(targets)}件\n"
+            f"チェック間隔: {CHECK_INTERVAL_MINUTES}分"
+        )
+        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            
+            # Login
+            page.goto(LOGIN_URL)
+            page.wait_for_load_state("networkidle")
+            
+            # Try to find login fields with different selectors
+            try:
+                # Wait for input fields to be visible
+                page.wait_for_selector('input[name="guest_id"]', timeout=10000)
+                page.fill('input[name="guest_id"]', LOGIN_ID)
+                page.fill('input[name="password"]', PASSWORD)
+                page.click('input[name="auth"]')
+            except Exception as e:
+                print(f"Login attempt 1 failed: {e}")
+                try:
+                    # Try alternative selectors
+                    page.wait_for_selector('input[type="text"]', timeout=10000)
+                    page.fill('input[type="text"]', LOGIN_ID)
+                    page.fill('input[type="password"]', PASSWORD)
+                    page.click('input[type="submit"]')
+                except Exception as e2:
+                    print(f"Login attempt 2 failed: {e2}")
+                    # Try ID-based selectors
+                    page.wait_for_selector('#guest_id', timeout=10000)
+                    page.fill('#guest_id', LOGIN_ID)
+                    page.fill('#password', PASSWORD)
+                    page.click('#login_btn')
+            
+            page.wait_for_load_state("networkidle")
+            print("Logged in successfully")
+            
+            # Navigate to reservation form
+            page.click('a[href="reservation.php"]')
+            page.wait_for_load_state("networkidle")
+            print("Navigated to reservation form")
+            
+            # Monitoring loop with timeout
+            start_time = now_jst()
+            max_duration_minutes = 5 * 60 + 50  # 5 hours 50 minutes
+            
+            while True:
+                # Check if we've exceeded the maximum duration
+                elapsed = (now_jst() - start_time).total_seconds() / 60
+                if elapsed >= max_duration_minutes:
+                    print(f"\nMaximum duration ({max_duration_minutes} minutes) reached. Stopping monitoring.")
+                    send_discord_notification(
+                        f"[TIMEOUT] 監視タイムアウト\n"
+                        f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"理由: {max_duration_minutes}分経過による自動停止"
+                    )
+                    break
+                
+                try:
+                    run_monitoring(page, state)
+                except Exception as e:
+                    print(f"Monitoring iteration failed: {e}")
+                    send_discord_notification(
+                        f"[ERROR] 監視チェック失敗\n"
+                        f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"エラー: {str(e)}"
+                    )
+                
+                print(f"Waiting {CHECK_INTERVAL_MINUTES} minutes before the next check. Press Ctrl+C to stop.")
+                time.sleep(CHECK_INTERVAL_MINUTES * 60)
+        
+        browser.close()
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user")
         send_discord_notification(
