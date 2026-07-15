@@ -235,8 +235,8 @@ def reset_form(page):
         print(f"Error resetting form: {e}")
 
 
-def run_monitoring():
-    """Main monitoring loop"""
+def run_monitoring(send_start_notification=False):
+    """Run one availability check."""
     print(f"Starting availability monitoring at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Check interval: {CHECK_INTERVAL_MINUTES} minutes")
     
@@ -286,17 +286,17 @@ def run_monitoring():
         page.wait_for_load_state("networkidle")
         print("Navigated to reservation form")
         
-        # Send startup notification
-        target_dates = get_target_dates()
-        send_discord_notification(
-            f"[START] 監視開始\n"
-            f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"監視期間: {target_dates[0]} ～ {target_dates[-1]}\n"
-            f"対象: {len(targets)}件\n"
-            f"チェック間隔: {CHECK_INTERVAL_MINUTES}分"
-        )
-        
-        # Single check for GitHub Actions
+        if send_start_notification:
+            target_dates = get_target_dates()
+            send_discord_notification(
+                f"[START] 監視開始\n"
+                f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"監視期間: {target_dates[0]} ～ {target_dates[-1]}\n"
+                f"対象: {len(targets)}件\n"
+                f"チェック間隔: {CHECK_INTERVAL_MINUTES}分"
+            )
+
+        # Perform one check. The caller repeats this until it is stopped.
         print(f"\n{'='*60}")
         print(f"Check at {now_jst().strftime('%Y-%m-%d %H:%M:%S')}")
         
@@ -376,7 +376,7 @@ def run_monitoring():
         else:
             print("No new slots found")
         
-        print("\nCheck completed. Exiting.")
+        print("\nCheck completed.")
 
 
 if __name__ == "__main__":
@@ -388,7 +388,37 @@ if __name__ == "__main__":
         print("Warning: DISCORD_WEBHOOK_URL not set. Notifications will not be sent.")
     
     try:
-        run_monitoring()
+        first_run = True
+        start_time = now_jst()
+        max_duration_minutes = 5 * 60 + 50  # 5 hours 50 minutes
+        
+        while True:
+            # Check if we've exceeded the maximum duration
+            elapsed = (now_jst() - start_time).total_seconds() / 60
+            if elapsed >= max_duration_minutes:
+                print(f"\nMaximum duration ({max_duration_minutes} minutes) reached. Stopping monitoring.")
+                send_discord_notification(
+                    f"[TIMEOUT] 監視タイムアウト\n"
+                    f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"理由: {max_duration_minutes}分経過による自動停止"
+                )
+                break
+            
+            try:
+                run_monitoring(send_start_notification=first_run)
+            except Exception as e:
+                # Continue the manual monitoring session after transient errors.
+                print(f"Monitoring iteration failed: {e}")
+                send_discord_notification(
+                    f"[ERROR] 監視チェック失敗\n"
+                    f"時間: {now_jst().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"エラー: {str(e)}"
+                )
+            finally:
+                first_run = False
+
+            print(f"Waiting {CHECK_INTERVAL_MINUTES} minutes before the next check. Press Ctrl+C to stop.")
+            time.sleep(CHECK_INTERVAL_MINUTES * 60)
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user")
         send_discord_notification(

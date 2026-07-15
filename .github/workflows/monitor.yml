@@ -1,10 +1,7 @@
 name: Therapist Availability Monitor
 
 on:
-  schedule:
-    # Run every 10 minutes
-    - cron: '*/10 * * * *'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Run only when started manually
 
 jobs:
   monitor:
