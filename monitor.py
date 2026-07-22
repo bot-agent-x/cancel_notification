@@ -225,6 +225,25 @@ def check_target_availability(page, target_name, date):
         return []
 
 
+def merge_time_ranges(time_slots):
+    """Merge overlapping/adjacent 'HH:MM～HH:MM' slot texts into contiguous ranges."""
+    ranges = []
+    for slot in time_slots:
+        start, end = slot.strip().split('～')
+        ranges.append((start.strip(), end.strip()))
+    ranges.sort()
+
+    merged = []
+    for start, end in ranges:
+        if merged and start <= merged[-1][1]:
+            if end > merged[-1][1]:
+                merged[-1] = (merged[-1][0], end)
+        else:
+            merged.append((start, end))
+
+    return [f"{start}～{end}" for start, end in merged]
+
+
 def reset_form(page):
     """Reset the form by navigating back to reservation page"""
     try:
@@ -294,20 +313,19 @@ def run_monitoring(page, state):
         if weekday_slots:
             print(f"\n[NEW] Found {len(weekday_slots)} new available slots (weekdays only)!")
             
-            # Group by target
+            # Group by target and date
             slots_by_target = {}
             for slot in weekday_slots:
                 target = slot['target']
-                if target not in slots_by_target:
-                    slots_by_target[target] = []
-                slots_by_target[target].append(slot)
-            
+                slots_by_target.setdefault(target, {}).setdefault(slot['date'], []).append(slot['time'])
+
             # Send batch notification
             message_parts = ["[NEW] 空き発生！"]
-            for target, slots in slots_by_target.items():
+            for target, dates in slots_by_target.items():
                 message_parts.append(f"\n{target}")
-                for slot in slots:
-                    message_parts.append(f"  {slot['date']} {slot['time']}")
+                for date, times in dates.items():
+                    for time_range in merge_time_ranges(times):
+                        message_parts.append(f"  {date} {time_range}")
             
             message_parts.append(f"\n予約ページ: {LOGIN_URL.replace('login.php', 'reservation.php')}")
             send_discord_notification("\n".join(message_parts))
