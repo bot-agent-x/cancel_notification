@@ -397,7 +397,8 @@ if __name__ == "__main__":
                     f"path={page.url.split('?')[0].split('/', 3)[-1]} "
                     f"login_form_present={page.locator('input[name=\"guest_id\"]').count() > 0} "
                     f"hrefs={hrefs[:30]}"
-                )            page.click('a[href="reservation.php"]')
+                )
+            page.click('a[href="reservation.php"]')
             page.wait_for_load_state("networkidle")
             print("Navigated to reservation form")
             
