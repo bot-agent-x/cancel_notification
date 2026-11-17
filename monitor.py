@@ -385,6 +385,11 @@ if __name__ == "__main__":
             # Simple login (same as test_playwright.py)
             page.fill('input[name="guest_id"]', LOGIN_ID)
             page.fill('input[name="password"]', PASSWORD)
+            page.on(
+                "response",
+                lambda r: print(f"[DIAG] POST {r.url.split('?')[0].split('/', 3)[-1]} -> {r.status}")
+                if r.request.method == "POST" else None,
+            )
             page.click('input[name="auth"]')
             page.wait_for_load_state("networkidle")
             print(f"Logged in successfully, page title: {page.title()}")
@@ -398,6 +403,8 @@ if __name__ == "__main__":
                     f"login_form_present={page.locator('input[name=\"guest_id\"]').count() > 0} "
                     f"hrefs={hrefs[:30]}"
                 )
+                body_text = " ".join(page.inner_text("body").split())
+                print(f"[DIAG] iframes={page.locator('iframe').count()} body_text={body_text[:400]}")
             page.click('a[href="reservation.php"]')
             page.wait_for_load_state("networkidle")
             print("Navigated to reservation form")
