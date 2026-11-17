@@ -128,6 +128,21 @@ def send_discord_notification(message):
         return False
 
 
+NO_AVAILABILITY_TEXT = "空き時間が見つかりません"
+FORM_WAIT_TIMEOUT_MS = 10000
+
+
+def wait_for_first_visible(page, candidates, timeout_ms=FORM_WAIT_TIMEOUT_MS):
+    """Return the key of the first visible locator in candidates, or "timeout"."""
+    deadline = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < deadline:
+        for name, locator in candidates.items():
+            if locator.first.is_visible():
+                return name
+        page.wait_for_timeout(100)
+    return "timeout"
+
+
 def check_target_availability(page, target_name, date):
     """
     Check availability for a specific target on a specific date.
@@ -171,14 +186,29 @@ def check_target_availability(page, target_name, date):
             print(f"  Target not found for date {date}")
             return []
         
-        page.select_option('select[name="cast"]', therapist_value)
-        time.sleep(1)
-        
-        # Check if course selection is available (indicates not fully booked)
+        # The course box is rebuilt by an Ajax call after choosing a therapist
+        try:
+            with page.expect_response(
+                lambda r: "get_reservation_detail.php" in r.url,
+                timeout=FORM_WAIT_TIMEOUT_MS,
+            ):
+                page.select_option('select[name="cast"]', therapist_value)
+        except Exception:
+            print(f"  Error: no response after selecting therapist for date {date}")
+            return []
+
+        # Wait for whichever appears first: course select or "no availability" message
         course_select = page.locator('select[name="course"]')
-        
-        if not course_select.is_visible():
-            print(f"  Course selection not available for date {date} (fully booked)")
+        course_result = wait_for_first_visible(page, {
+            "course": course_select,
+            "no_availability": page.get_by_text(NO_AVAILABILITY_TEXT),
+        })
+
+        if course_result == "no_availability":
+            print(f"  No availability for date {date} (fully booked)")
+            return []
+        if course_result == "timeout":
+            print(f"  Error: course selection did not appear for date {date}")
             return []
         
         # Try to select 90-minute course
@@ -195,13 +225,19 @@ def check_target_availability(page, target_name, date):
             return []
         
         page.select_option('select[name="course"]', COURSE_VALUE)
-        time.sleep(1)
-        
+
         # Check start time options
         start_time_select = page.locator('select[name="start_time"]')
-        
-        if not start_time_select.is_visible():
-            print(f"  Start time selection not available for date {date}")
+        start_time_result = wait_for_first_visible(page, {
+            "start_time": start_time_select,
+            "no_availability": page.get_by_text(NO_AVAILABILITY_TEXT),
+        })
+
+        if start_time_result == "no_availability":
+            print(f"  No available times for date {date}")
+            return []
+        if start_time_result == "timeout":
+            print(f"  Error: start time selection did not appear for date {date}")
             return []
         
         start_time_options = start_time_select.locator('option').all()
