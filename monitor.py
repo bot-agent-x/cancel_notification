@@ -379,7 +379,12 @@ if __name__ == "__main__":
             page = context.new_page()
             
             # Login
-            page.goto(LOGIN_URL)
+            response = page.goto(LOGIN_URL)
+            if response is not None and response.status >= 400:
+                raise RuntimeError(
+                    f"ログインページにアクセスできません (HTTP {response.status})。"
+                    "サイト側のアクセス制限の可能性があります"
+                )
             print(f"Page title: {page.title()}")
             
             # Simple login (same as test_playwright.py)
@@ -387,6 +392,11 @@ if __name__ == "__main__":
             page.fill('input[name="password"]', PASSWORD)
             page.click('input[name="auth"]')
             page.wait_for_load_state("networkidle")
+            if page.locator('input[name="guest_id"]').count() > 0:
+                raise RuntimeError(
+                    "ログインに失敗しました（ログイン画面のままです）。"
+                    "ID/パスワード、または別セッション・アクセス制限を確認してください"
+                )
             print(f"Logged in successfully, page title: {page.title()}")
             
             # Navigate to reservation form
