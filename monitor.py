@@ -390,6 +390,14 @@ if __name__ == "__main__":
             print(f"Logged in successfully, page title: {page.title()}")
             
             # Navigate to reservation form
+            if page.locator('a[href="reservation.php"]').count() == 0:
+                hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))")
+                print(
+                    "[DIAG] reservation link not found. "
+                    f"path={page.url.split('?')[0].split('/', 3)[-1]} "
+                    f"login_form_present={page.locator('input[name=\"guest_id\"]').count() > 0} "
+                    f"hrefs={hrefs[:30]}"
+                )
             page.click('a[href="reservation.php"]')
             page.wait_for_load_state("networkidle")
             print("Navigated to reservation form")
